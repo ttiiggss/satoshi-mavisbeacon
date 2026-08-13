@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 10%;
+    --radius: 0rem;
+
+    /* Theme-specific variables */
+    --theme-bg: 0 0% 100%;
+    --theme-text: 0 0% 10%;
+    --theme-muted: 0 0% 45%;
+    --theme-accent: 0 0% 0%;
+    --theme-error: 0 84% 60%;
+  }
+
+  .dark {
+    /* Dark theme */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 90%;
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 0% 80%;
+
+    /* Theme-specific variables */
+    --theme-bg: 0 0% 0%;
+    --theme-text: 0 0% 50%;
+    --theme-muted: 0 0% 40%;
+    --theme-accent: 0 0% 70%;
+    --theme-error: 0 70% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-mono;
+  }
+}
+
+@layer components {
+  .result-stat {
+    @apply flex flex-col items-center justify-center min-w-32 p-6 bg-secondary;
+  }
+}
+
+@layer utilities {
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+
+  .animate-cursor {
+    animation: blink 1s infinite;
+  }
+
+  .text-theme-text {
+    color: hsl(var(--theme-text));
+  }
+
+  .text-theme-muted {
+    color: hsl(var(--theme-muted));
+  }
+
+  .text-theme-accent {
+    color: hsl(var(--theme-accent));
+  }
+
+  .text-theme-error {
+    color: hsl(var(--theme-error));
+  }
+
+  .bg-theme-bg {
+    background-color: hsl(var(--theme-bg));
+  }
+
+  .bg-theme-accent {
+    background-color: hsl(var(--theme-accent));
+  }
+}
