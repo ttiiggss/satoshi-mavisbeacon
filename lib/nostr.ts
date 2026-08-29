@@ -203,16 +203,13 @@ export const publishScore = async (
 // Fetch top scores from Nostr
 export const fetchTopScores = async (limit = 10, levelId?: number): Promise<TypingScore[]> => {
   try {
-    // Create a filter for typing test scores
-    const filter: Record<string, unknown> = {
+    // Always fetch all typing-test scores via the #t tag (widely supported by
+    // relays). We filter by level client-side because most relays silently
+    // ignore arbitrary single-letter tag filters like #level.
+    const filter = {
       kinds: [SCORE_EVENT_KIND],
       "#t": ["typing-test"],
       limit: 100, // Fetch more than needed to process
-    }
-
-    // When a specific level is requested, filter on the #level tag.
-    if (levelId !== undefined) {
-      filter["#level"] = [levelId.toString()]
     }
 
     // Use the list method with proper error handling
@@ -249,7 +246,7 @@ export const fetchTopScores = async (limit = 10, levelId?: number): Promise<Typi
 
           const wpm = wpmTag ? Number.parseInt(wpmTag[1]) : 0
           const accuracy = accuracyTag ? Number.parseInt(accuracyTag[1]) : 0
-          const levelId = levelTag ? Number.parseInt(levelTag[1]) : undefined
+          const eventLevelId = levelTag ? Number.parseInt(levelTag[1]) : undefined
 
           // Get user profile info
           const profile = await fetchUserProfile(event.pubkey)
@@ -263,7 +260,7 @@ export const fetchTopScores = async (limit = 10, levelId?: number): Promise<Typi
             wpm,
             accuracy,
             timestamp: event.created_at,
-            levelId,
+            levelId: eventLevelId,
           }
         } catch (e) {
           console.error("Error processing event:", e)
@@ -272,9 +269,11 @@ export const fetchTopScores = async (limit = 10, levelId?: number): Promise<Typi
       }),
     )
 
-    // Filter out any null results and add to scores
+    // Filter out null results, then apply the level filter client-side.
     processedScores.forEach((score) => {
-      if (score) scores.push(score)
+      if (!score) return
+    if (levelId !== undefined && score.levelId !== levelId) return
+      scores.push(score)
     })
 
     // Sort by WPM (highest first)
