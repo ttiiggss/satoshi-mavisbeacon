@@ -6,9 +6,9 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
-import { type NostrProfile, publishScore } from "@/lib/nostr"
+import { type NostrProfile, publishScore, fetchTopScores, type TypingScore } from "@/lib/nostr"
 import { type Quote } from "@/lib/quotes"
-import { Trophy, AlertCircle, ArrowLeft, ArrowRight, Info, Star } from "lucide-react"
+import { Trophy, AlertCircle, ArrowLeft, ArrowRight, Info, Star, User } from "lucide-react"
 
 interface TypingTestProps {
   level: Quote
@@ -50,6 +50,8 @@ export default function TypingTest({
   const [publishSuccess, setPublishSuccess] = useState<boolean | null>(null)
   const [showBackstory, setShowBackstory] = useState(false)
   const [isPersonalBest, setIsPersonalBest] = useState(false)
+  const [levelScores, setLevelScores] = useState<TypingScore[]>([])
+  const [levelScoresLoading, setLevelScoresLoading] = useState(false)
   const [fontSize, setFontSize] = useState(18) // Default font size in pixels
   // Track the best WPM this user had on this level *before* the current run,
   // so we can detect a personal best at completion time. Updated whenever the
@@ -168,6 +170,28 @@ export default function TypingTest({
       containerRef.current.focus()
     }
   }, [isFinished])
+
+  // Fetch this level's leaderboard when the run finishes so we can show
+  // the user's ranking against others on this exact level.
+  useEffect(() => {
+    if (!isFinished) return
+    let cancelled = false
+    const load = async () => {
+      setLevelScoresLoading(true)
+      try {
+        const top = await fetchTopScores(10, level.id)
+        if (!cancelled) setLevelScores(top)
+      } catch (e) {
+        console.error("Failed to load level leaderboard:", e)
+      } finally {
+        if (!cancelled) setLevelScoresLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [isFinished, level.id])
 
   // Calculate WPM
   const calculateWPM = () => {
@@ -458,6 +482,74 @@ export default function TypingTest({
             )}
           </div>
         )}
+
+        {/* Inline leaderboard for this level */}
+        <div
+          className={cn(
+            "mt-6 w-full max-w-md rounded-lg border px-5 py-4",
+            theme === "dark" ? "border-neutral-800 bg-neutral-900/40" : "border-neutral-200 bg-neutral-50",
+          )}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Trophy size={14} className={theme === "dark" ? "text-neutral-500" : "text-neutral-500"} />
+            <span className={cn("text-[11px] uppercase tracking-wider", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+              Level {levelNumber} leaderboard
+            </span>
+          </div>
+
+          {levelScoresLoading ? (
+            <div className="py-3 text-center text-xs text-muted-foreground animate-pulse">Loading rankings...</div>
+          ) : levelScores.length === 0 ? (
+            <div className="py-3 text-center text-xs text-muted-foreground">
+              No scores for this level yet. Publish yours to claim #1!
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {levelScores.map((score, index) => {
+                const isYou = userProfile?.pubkey === score.pubkey
+                return (
+                  <div
+                    key={score.id}
+                    className={cn(
+                      "grid grid-cols-12 items-center gap-2 py-1.5 text-sm",
+                      index > 0 && (theme === "dark" ? "border-t border-neutral-800" : "border-t border-neutral-200"),
+                      isYou && (theme === "dark" ? "bg-neutral-800/50" : "bg-neutral-200/50"),
+                    )}
+                  >
+                    <div className="col-span-1 text-xs font-medium">{index + 1}</div>
+                    <div className="col-span-7 flex items-center gap-2 min-w-0">
+                      {score.picture ? (
+                        <img
+                          src={score.picture}
+                          alt={score.name || "User"}
+                          className="w-5 h-5 rounded-full object-cover shrink-0"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none"
+                            e.currentTarget.nextElementSibling?.classList.remove("hidden")
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={cn(
+                          "w-5 h-5 rounded-full flex items-center justify-center shrink-0",
+                          theme === "dark" ? "bg-neutral-800" : "bg-neutral-200",
+                          score.picture ? "hidden" : "",
+                        )}
+                      >
+                        <User size={11} className={theme === "dark" ? "text-neutral-500" : "text-neutral-500"} />
+                      </div>
+                      <span className="truncate text-xs">
+                        {score.name || "Anonymous"}
+                        {isYou && <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-500">you</span>}
+                      </span>
+                    </div>
+                    <div className="col-span-4 text-right font-mono text-xs font-medium">{score.wpm}</div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
           <Button
