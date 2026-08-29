@@ -88,11 +88,11 @@ export default function LevelPicker({
                 <div className="flex items-center gap-2 min-w-0">
                   <span
                     className={cn(
-                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+                      "flex h-7 w-12 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums",
                       dark ? "bg-neutral-800 text-neutral-300" : "bg-neutral-200 text-neutral-700",
                     )}
                   >
-                    {level.id}
+                    {level.id}/{levels.length}
                   </span>
                   <span className={cn("text-xs uppercase tracking-wider", dark ? "text-neutral-500" : "text-neutral-500")}>
                     {formatDate(level.date)}
