@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
@@ -171,27 +171,25 @@ export default function TypingTest({
     }
   }, [isFinished])
 
-  // Fetch this level's leaderboard when the run finishes so we can show
-  // the user's ranking against others on this exact level.
+  // Fetch this level's leaderboard so we can show the user's ranking
+  // against others on this exact level.
+  const loadLevelScores = useCallback(async () => {
+    setLevelScoresLoading(true)
+    try {
+      const top = await fetchTopScores(10, level.id)
+      setLevelScores(top)
+    } catch (e) {
+      console.error("Failed to load level leaderboard:", e)
+    } finally {
+      setLevelScoresLoading(false)
+    }
+  }, [level.id])
+
+  // Fetch when the run finishes.
   useEffect(() => {
     if (!isFinished) return
-    let cancelled = false
-    const load = async () => {
-      setLevelScoresLoading(true)
-      try {
-        const top = await fetchTopScores(10, level.id)
-        if (!cancelled) setLevelScores(top)
-      } catch (e) {
-        console.error("Failed to load level leaderboard:", e)
-      } finally {
-        if (!cancelled) setLevelScoresLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [isFinished, level.id])
+    loadLevelScores()
+  }, [isFinished, loadLevelScores])
 
   // Calculate WPM
   const calculateWPM = () => {
@@ -349,6 +347,12 @@ export default function TypingTest({
     try {
       const result = await publishScore(wpm, accuracy, level.id)
       setPublishSuccess(!!result)
+
+      // Refetch the level leaderboard so the user sees their freshly
+      // published score appear. Wait a moment for relays to propagate.
+      if (result) {
+        setTimeout(() => loadLevelScores(), 1500)
+      }
     } catch (error) {
       console.error("Failed to publish score:", error)
       setPublishSuccess(false)

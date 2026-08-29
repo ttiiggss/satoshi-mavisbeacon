@@ -165,6 +165,10 @@ export const publishScore = async (
 
     const tags: string[][] = [
       ["t", "typing-test"],
+      // d-tag makes each score a unique parameterized replaceable event.
+      // Without it, relays would only keep the latest score per pubkey and
+      // silently delete all previous scores.
+      ["d", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`],
       ["wpm", wpm.toString()],
       ["accuracy", accuracy.toString()],
     ]
