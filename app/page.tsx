@@ -41,6 +41,12 @@ export default function Home() {
     localStorage.removeItem("nostrProfile")
   }
 
+  // Clicking the header title returns to the home view (level picker).
+  const handleHome = () => {
+    setSelectedLevel(null)
+    setActiveTab("typing")
+  }
+
   // Load saved profile on mount
   useEffect(() => {
     setMounted(true)
@@ -121,7 +127,13 @@ export default function Home() {
         <div className="w-full max-w-3xl">
           {/* Header with login and theme toggle */}
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-2xl font-medium">Satoshi MavisBeacon</h1>
+            <h1
+              className="text-2xl font-medium cursor-pointer select-none"
+              onClick={handleHome}
+              title="Back to home"
+            >
+              Satoshi MavisBeacon
+            </h1>
             <div className="flex items-center gap-4">
               <ThemeToggle />
               <NostrLogin onLogin={handleLogin} onLogout={handleLogout} profile={userProfile} />
