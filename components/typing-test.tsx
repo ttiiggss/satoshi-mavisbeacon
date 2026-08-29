@@ -7,15 +7,35 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 import { type NostrProfile, publishScore } from "@/lib/nostr"
-import { Trophy, AlertCircle } from "lucide-react"
+import { type Quote } from "@/lib/quotes"
+import { Trophy, AlertCircle, ArrowLeft, ArrowRight, Info, Star } from "lucide-react"
 
 interface TypingTestProps {
-  quotes: string[]
+  level: Quote
+  levelNumber: number
+  totalLevels: number
+  hasNext: boolean
   userProfile: NostrProfile | null
+  completedCount: number
+  bestWpm: Record<number, number>
+  onComplete: (levelId: number, wpm: number) => void
+  onNext: () => void
+  onBack: () => void
 }
 
-export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
-  const [currentQuote, setCurrentQuote] = useState("")
+export default function TypingTest({
+  level,
+  levelNumber,
+  totalLevels,
+  hasNext,
+  userProfile,
+  completedCount,
+  bestWpm,
+  onComplete,
+  onNext,
+  onBack,
+}: TypingTestProps) {
+  const [currentQuote, setCurrentQuote] = useState(level.text)
   const [userInput, setUserInput] = useState("")
   const [startTime, setStartTime] = useState<number | null>(null)
   const [endTime, setEndTime] = useState<number | null>(null)
@@ -28,7 +48,13 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
   const [mounted, setMounted] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishSuccess, setPublishSuccess] = useState<boolean | null>(null)
+  const [showBackstory, setShowBackstory] = useState(false)
+  const [isPersonalBest, setIsPersonalBest] = useState(false)
   const [fontSize, setFontSize] = useState(18) // Default font size in pixels
+  // Track the best WPM this user had on this level *before* the current run,
+  // so we can detect a personal best at completion time. Updated whenever the
+  // level changes (before any keystrokes for the new level could land).
+  const previousBestRef = useRef<number>(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const textContainerRef = useRef<HTMLDivElement>(null)
   const wpmIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -97,20 +123,15 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
     }
   }, [currentPosition, currentQuote, userInput])
 
-  // Get a random quote
-  const getRandomQuote = () => {
-    const randomIndex = Math.floor(Math.random() * quotes.length)
-    return quotes[randomIndex]
-  }
-
-  // Initialize game
+  // Initialize game for the current level
   const initGame = () => {
-    setCurrentQuote(getRandomQuote())
+    setCurrentQuote(level.text)
     setUserInput("")
     setStartTime(null)
     setEndTime(null)
     setWpm(0)
     setLiveWpm(0)
+    setShowBackstory(false)
     setAccuracy(100)
     setIsFinished(false)
     setIsStarted(false)
@@ -125,15 +146,21 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
     }
   }
 
-  // Start the game
+  // Start the game (re-initialize whenever the level changes)
   useEffect(() => {
+    // Snapshot the user's prior best on this level *before* the run starts,
+    // so completion can detect a personal best. bestWpm may update after
+    // onComplete fires in the parent, but this ref captures the pre-run value.
+    previousBestRef.current = bestWpm[level.id] ?? 0
+    setIsPersonalBest(false)
     initGame()
     return () => {
       if (wpmIntervalRef.current) {
         clearInterval(wpmIntervalRef.current)
       }
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [level.id])
 
   // Focus the container when loaded
   useEffect(() => {
@@ -265,7 +292,14 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
         setIsFinished(true)
 
         // Set final WPM
-        setWpm(calculateWPM())
+        const finalWpm = calculateWPM()
+        setWpm(finalWpm)
+
+        // Detect personal best against the pre-run snapshot
+        setIsPersonalBest(finalWpm > previousBestRef.current)
+
+        // Notify parent so progress can be saved / next level unlocked
+        onComplete(level.id, finalWpm)
 
         // Clear interval
         if (wpmIntervalRef.current) {
@@ -289,7 +323,7 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
     setPublishSuccess(null)
 
     try {
-      const result = await publishScore(wpm, accuracy)
+      const result = await publishScore(wpm, accuracy, level.id)
       setPublishSuccess(!!result)
     } catch (error) {
       console.error("Failed to publish score:", error)
@@ -319,6 +353,20 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
 
   // Results Screen
   if (isFinished) {
+    // Compute overall summary stats from the user's best-WPM map (which the
+    // parent has already updated to include this run via onComplete).
+    const wpmValues = Object.values(bestWpm)
+    const avgWpm = wpmValues.length > 0 ? Math.round(wpmValues.reduce((a, b) => a + b, 0) / wpmValues.length) : 0
+    let bestLevelId = level.id
+    let bestWpmOverall = wpm
+    for (const [id, w] of Object.entries(bestWpm)) {
+      if (w > bestWpmOverall) {
+        bestWpmOverall = w
+        bestLevelId = Number.parseInt(id)
+      }
+    }
+    const progressPct = Math.round((completedCount / totalLevels) * 100)
+
     return (
       <div className="w-full h-[70vh] flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-0 text-left">
@@ -330,6 +378,63 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
           <div className={cn("text-7xl font-normal", theme === "dark" ? "text-neutral-500" : "text-neutral-600")}>
             {accuracy}%
           </div>
+        </div>
+
+        {/* Overall summary */}
+        <div
+          className={cn(
+            "mt-8 w-full max-w-md rounded-lg border px-5 py-4",
+            theme === "dark" ? "border-neutral-800 bg-neutral-900/40" : "border-neutral-200 bg-neutral-50",
+          )}
+        >
+          <div className={cn("text-[11px] uppercase tracking-wider mb-3", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+            Overall summary
+          </div>
+
+          {/* Levels completed + progress bar */}
+          <div className="flex items-center justify-between text-sm mb-1.5">
+            <span className={theme === "dark" ? "text-neutral-400" : "text-neutral-600"}>Levels completed</span>
+            <span className={cn("font-mono font-medium", theme === "dark" ? "text-neutral-300" : "text-neutral-700")}>
+              {completedCount} / {totalLevels}
+            </span>
+          </div>
+          <div className={cn("h-1.5 w-full rounded-full overflow-hidden mb-4", theme === "dark" ? "bg-neutral-800" : "bg-neutral-200")}>
+            <div
+              className={cn("h-full transition-all duration-500", theme === "dark" ? "bg-neutral-400" : "bg-neutral-700")}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+
+          {/* Avg + Best WPM */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className={cn("text-[11px] uppercase tracking-wider", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+                Avg WPM
+              </div>
+              <div className={cn("font-mono font-medium text-lg", theme === "dark" ? "text-neutral-300" : "text-neutral-700")}>
+                {avgWpm}
+              </div>
+            </div>
+            <div>
+              <div className={cn("text-[11px] uppercase tracking-wider", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+                Best WPM
+              </div>
+              <div className={cn("font-mono font-medium text-lg", theme === "dark" ? "text-neutral-300" : "text-neutral-700")}>
+                {bestWpmOverall}
+                <span className={cn("text-xs font-normal ml-1.5", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+                  L{bestLevelId}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Personal best badge */}
+          {isPersonalBest && (
+            <div className="mt-4 flex items-center gap-1.5 text-sm text-amber-500">
+              <Star size={14} className="fill-current" />
+              <span>New personal best on this level!</span>
+            </div>
+          )}
         </div>
 
         {/* Publish score button (only if logged in) */}
@@ -354,7 +459,7 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
           </div>
         )}
 
-        <div className="flex gap-4 mt-8">
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
           <Button
             onClick={resetGame}
             variant="ghost"
@@ -362,6 +467,24 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
           >
             start over
           </Button>
+          <Button
+            onClick={onBack}
+            variant="ghost"
+            className={cn("flex items-center gap-1.5 text-sm uppercase tracking-wider", getThemeColor())}
+          >
+            <ArrowLeft size={14} />
+            levels
+          </Button>
+          {hasNext && (
+            <Button
+              onClick={onNext}
+              variant="default"
+              className="flex items-center gap-1.5 text-sm uppercase tracking-wider"
+            >
+              next level
+              <ArrowRight size={14} />
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -369,6 +492,57 @@ export default function TypingTest({ quotes, userProfile }: TypingTestProps) {
 
   return (
     <div className="w-full flex flex-col items-center gap-3 py-8 px-4">
+      {/* Level header */}
+      <div className="w-full max-w-3xl flex items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className={cn(
+            "flex items-center gap-1.5 text-xs uppercase tracking-wider shrink-0",
+            theme === "dark" ? "text-neutral-500 hover:text-neutral-300" : "text-neutral-500 hover:text-neutral-700",
+          )}
+        >
+          <ArrowLeft size={14} />
+          levels
+        </button>
+        <div className="flex flex-col items-center text-center min-w-0">
+          <span className={cn("text-xs uppercase tracking-wider", getThemeColor())}>
+            Level {levelNumber} / {totalLevels}
+          </span>
+          <span className={cn("text-[11px] mt-0.5 truncate max-w-full", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+            {new Date(level.date + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} · {level.source}
+          </span>
+        </div>
+        <button
+          onClick={() => setShowBackstory((v) => !v)}
+          className={cn(
+            "flex items-center gap-1.5 text-xs uppercase tracking-wider shrink-0",
+            theme === "dark" ? "text-neutral-500 hover:text-neutral-300" : "text-neutral-500 hover:text-neutral-700",
+            showBackstory && (theme === "dark" ? "text-neutral-300" : "text-neutral-700"),
+          )}
+          aria-expanded={showBackstory}
+          aria-controls="backstory-panel"
+        >
+          <Info size={14} />
+          about
+        </button>
+      </div>
+
+      {/* Backstory panel */}
+      {showBackstory && (
+        <div
+          id="backstory-panel"
+          className={cn(
+            "w-full max-w-3xl rounded-lg border p-4 text-sm leading-relaxed",
+            theme === "dark" ? "border-neutral-800 bg-neutral-900/40 text-neutral-300" : "border-neutral-200 bg-neutral-50 text-neutral-700",
+          )}
+        >
+          <div className={cn("text-[11px] uppercase tracking-wider mb-2", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+            About this quote
+          </div>
+          <p>{level.backstory}</p>
+        </div>
+      )}
+
       {/* Interactive quote display - no background, no borders */}
       <div
         ref={containerRef}

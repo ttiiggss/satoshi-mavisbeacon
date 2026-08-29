@@ -1,24 +1,41 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { fetchTopScores, type TypingScore } from "@/lib/nostr"
+import { levels } from "@/lib/quotes"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 import { motion } from "framer-motion"
 import { Trophy, RefreshCw, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+const ALL_LEVELS = "all"
+
+function formatDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00")
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+}
 
 export default function Leaderboard() {
   const [scores, setScores] = useState<TypingScore[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedLevel, setSelectedLevel] = useState<string>(ALL_LEVELS)
   const { theme } = useTheme()
 
-  const loadScores = async () => {
+  const loadScores = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const topScores = await fetchTopScores(10)
+      const levelId = selectedLevel === ALL_LEVELS ? undefined : Number.parseInt(selectedLevel)
+      const topScores = await fetchTopScores(10, levelId)
       setScores(topScores)
     } catch (err) {
       console.error("Error fetching scores:", err)
@@ -26,11 +43,11 @@ export default function Leaderboard() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [selectedLevel])
 
   useEffect(() => {
     loadScores()
-  }, [])
+  }, [loadScores])
 
   const getThemeColor = () => {
     return theme === "dark" ? "text-neutral-400" : "text-neutral-600"
@@ -44,9 +61,14 @@ export default function Leaderboard() {
     return theme === "dark" ? "border-neutral-700" : "border-neutral-200"
   }
 
+  const selectedLevelData =
+    selectedLevel === ALL_LEVELS
+      ? null
+      : levels.find((l) => l.id === Number.parseInt(selectedLevel)) ?? null
+
   return (
     <div className="w-full max-w-3xl">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Trophy size={20} className={getThemeColor()} />
           <h2 className={cn("text-xl font-medium", getThemeColor())}>Leaderboard</h2>
@@ -61,6 +83,28 @@ export default function Leaderboard() {
           <RefreshCw size={14} className={cn("mr-1", isLoading && "animate-spin")} />
           Refresh
         </Button>
+      </div>
+
+      {/* Level selector */}
+      <div className="mb-6">
+        <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+          <SelectTrigger className={cn("w-full", getThemeColor())}>
+            <SelectValue placeholder="Select a level" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_LEVELS}>All levels</SelectItem>
+            {levels.map((level) => (
+              <SelectItem key={level.id} value={level.id.toString()}>
+                Level {level.id} · {formatDate(level.date)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedLevelData && (
+          <p className={cn("mt-2 text-xs", theme === "dark" ? "text-neutral-600" : "text-neutral-400")}>
+            {selectedLevelData.source}
+          </p>
+        )}
       </div>
 
       {error && <div className="text-theme-error text-center py-4">{error}</div>}
@@ -84,7 +128,10 @@ export default function Leaderboard() {
           </div>
 
           {scores.length === 0 && !isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">No scores yet. Be the first to submit!</div>
+            <div className="py-8 text-center text-muted-foreground">
+              No scores yet for {selectedLevel === ALL_LEVELS ? "this leaderboard" : "this level"}. Be the first to
+              submit!
+            </div>
           ) : (
             <div>
               {scores.map((score, index) => (

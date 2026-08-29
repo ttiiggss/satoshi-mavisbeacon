@@ -1,19 +1,33 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { quotes } from "@/lib/quotes"
+import { levels } from "@/lib/quotes"
+import type { Quote } from "@/lib/quotes"
 import TypingTest from "@/components/typing-test"
+import LevelPicker from "@/components/level-picker"
 import { ThemeProvider } from "@/components/theme-provider"
 import NostrLogin from "@/components/nostr-login"
 import Leaderboard from "@/components/leaderboard"
 import Navigation from "@/components/navigation"
 import ThemeToggle from "@/components/theme-toggle"
+import { useLevels } from "@/hooks/use-levels"
 import type { NostrProfile } from "@/lib/nostr"
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("typing")
   const [userProfile, setUserProfile] = useState<NostrProfile | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [selectedLevel, setSelectedLevel] = useState<Quote | null>(null)
+
+  const {
+    mounted: levelsMounted,
+    completed,
+    bestWpm,
+    unlockedLevel,
+    isUnlocked,
+    completeLevel,
+    resetProgress,
+  } = useLevels()
 
   // Handle user login
   const handleLogin = (profile: NostrProfile) => {
@@ -41,7 +55,65 @@ export default function Home() {
     }
   }, [])
 
+  const handleSelectLevel = (level: Quote) => {
+    if (!isUnlocked(level.id)) return
+    setSelectedLevel(level)
+  }
+
+  const handleBackToLevels = () => {
+    setSelectedLevel(null)
+  }
+
+  const handleNext = () => {
+    if (!selectedLevel) return
+    const nextLevel = levels.find((l) => l.id === selectedLevel.id + 1)
+    if (nextLevel && isUnlocked(nextLevel.id)) {
+      setSelectedLevel(nextLevel)
+    }
+  }
+
+  const handleComplete = (levelId: number, wpm: number) => {
+    completeLevel(levelId, wpm)
+  }
+
   if (!mounted) return null
+
+  const renderTypingContent = () => {
+    // Wait for level progress to load from localStorage before rendering
+    if (!levelsMounted) return null
+
+    if (selectedLevel) {
+      const hasNext =
+        !!levels.find((l) => l.id === selectedLevel.id + 1) &&
+        isUnlocked(selectedLevel.id + 1)
+      return (
+        <TypingTest
+          key={selectedLevel.id}
+          level={selectedLevel}
+          levelNumber={selectedLevel.id}
+          totalLevels={levels.length}
+          hasNext={hasNext}
+          userProfile={userProfile}
+          completedCount={completed.length}
+          bestWpm={bestWpm}
+          onComplete={handleComplete}
+          onNext={handleNext}
+          onBack={handleBackToLevels}
+        />
+      )
+    }
+
+    return (
+      <LevelPicker
+        levels={levels}
+        unlockedLevel={unlockedLevel}
+        completed={completed}
+        bestWpm={bestWpm}
+        onSelect={handleSelectLevel}
+        onReset={resetProgress}
+      />
+    )
+  }
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme={null} enableSystem={false}>
@@ -60,7 +132,7 @@ export default function Home() {
           <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
 
           {/* Content */}
-          {activeTab === "typing" ? <TypingTest quotes={quotes} userProfile={userProfile} /> : <Leaderboard />}
+          {activeTab === "typing" ? renderTypingContent() : <Leaderboard />}
         </div>
       </main>
     </ThemeProvider>

@@ -36,6 +36,7 @@ export interface TypingScore {
   wpm: number
   accuracy: number
   timestamp: number
+  levelId?: number
 }
 
 // Cache for user profiles to avoid repeated fetches
@@ -152,24 +153,34 @@ export const fetchUserProfile = async (pubkey: string): Promise<Partial<NostrPro
 }
 
 // Publish a typing score to Nostr
-export const publishScore = async (wpm: number, accuracy: number): Promise<string | null> => {
+export const publishScore = async (
+  wpm: number,
+  accuracy: number,
+  levelId?: number,
+): Promise<string | null> => {
   try {
     if (!hasNostrExtension()) {
       throw new Error("Nostr extension not found")
     }
 
+    const tags: string[][] = [
+      ["t", "typing-test"],
+      ["wpm", wpm.toString()],
+      ["accuracy", accuracy.toString()],
+    ]
+    if (levelId !== undefined) {
+      tags.push(["level", levelId.toString()])
+    }
+
     const event: Partial<Event> = {
       kind: SCORE_EVENT_KIND,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ["t", "typing-test"],
-        ["wpm", wpm.toString()],
-        ["accuracy", accuracy.toString()],
-      ],
+      tags,
       content: JSON.stringify({
         wpm,
         accuracy,
         app: "typing-game",
+        ...(levelId !== undefined ? { levelId } : {}),
       }),
     }
 
@@ -190,13 +201,18 @@ export const publishScore = async (wpm: number, accuracy: number): Promise<strin
 }
 
 // Fetch top scores from Nostr
-export const fetchTopScores = async (limit = 10): Promise<TypingScore[]> => {
+export const fetchTopScores = async (limit = 10, levelId?: number): Promise<TypingScore[]> => {
   try {
     // Create a filter for typing test scores
-    const filter = {
+    const filter: Record<string, unknown> = {
       kinds: [SCORE_EVENT_KIND],
       "#t": ["typing-test"],
       limit: 100, // Fetch more than needed to process
+    }
+
+    // When a specific level is requested, filter on the #level tag.
+    if (levelId !== undefined) {
+      filter["#level"] = [levelId.toString()]
     }
 
     // Use the list method with proper error handling
@@ -229,9 +245,11 @@ export const fetchTopScores = async (limit = 10): Promise<TypingScore[]> => {
           // Extract WPM and accuracy from tags
           const wpmTag = event.tags.find((tag) => tag[0] === "wpm")
           const accuracyTag = event.tags.find((tag) => tag[0] === "accuracy")
+          const levelTag = event.tags.find((tag) => tag[0] === "level")
 
           const wpm = wpmTag ? Number.parseInt(wpmTag[1]) : 0
           const accuracy = accuracyTag ? Number.parseInt(accuracyTag[1]) : 0
+          const levelId = levelTag ? Number.parseInt(levelTag[1]) : undefined
 
           // Get user profile info
           const profile = await fetchUserProfile(event.pubkey)
@@ -245,6 +263,7 @@ export const fetchTopScores = async (limit = 10): Promise<TypingScore[]> => {
             wpm,
             accuracy,
             timestamp: event.created_at,
+            levelId,
           }
         } catch (e) {
           console.error("Error processing event:", e)
